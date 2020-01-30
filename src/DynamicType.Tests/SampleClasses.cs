@@ -35,6 +35,11 @@ namespace DynamicType.Tests
         public int Id { get; set; }
 
         public string Name { get; set; }
+
+        public T Get<T>(string memberName)
+        {
+            return ValueAccessor.GetValue<SimpleDynamicType, T>(this, memberName);
+        }
     }
 
 

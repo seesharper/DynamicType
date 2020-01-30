@@ -39,6 +39,7 @@ namespace DynamicType
         {
             var typeBuilder = GetTypeBuilder();
             ImplementMembers(typeBuilder);
+            ImplementDynamicTypeInterface(typeBuilder);
             var type = typeBuilder.CreateTypeInfo();
             return type;
         }
@@ -54,7 +55,6 @@ namespace DynamicType
 
         private FieldBuilder[] ImplementMembers(TypeBuilder typeBuilder)
         {
-            typeBuilder.AddInterfaceImplementation(typeof(IDynamicType));
             var fields = new List<FieldBuilder>();
             var members = dynamicMembers.ToArray();
             var constructorBuilder = typeBuilder.DefineConstructor(MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName, CallingConventions.HasThis, members.Select(a => a.Type).ToArray());
@@ -85,11 +85,36 @@ namespace DynamicType
 
             return fields.ToArray();;
         }
+
+        private static void ImplementDynamicTypeInterface(TypeBuilder typeBuilder)
+        {
+            typeBuilder.AddInterfaceImplementation(typeof(IDynamicType));
+            var openGenericGetMethod = typeof(IDynamicType).GetMethod(nameof(IDynamicType.Get));
+            var openGenericGetValueMethod = typeof(ValueAccessor).GetMethod(nameof(ValueAccessor.GetValue));
+
+            var methodAttributes = openGenericGetMethod.Attributes ^ MethodAttributes.Abstract;
+            // var genericArgument =  openGenericGetMethod.GetGenericArguments()[0];
+            // var test = openGenericGetMethod.ReturnType;
+
+            var methodBuilder = typeBuilder.DefineMethod(openGenericGetMethod.Name,methodAttributes, openGenericGetMethod.ReturnType, new []{typeof(string)});
+            var genericArgumentName = openGenericGetMethod.GetGenericArguments()[0].Name;
+
+            var genericTypeParameterBuilder = methodBuilder.DefineGenericParameters(genericArgumentName)[0];
+            var closedGenericGetValueMethod = openGenericGetValueMethod.MakeGenericMethod(typeBuilder, genericTypeParameterBuilder);
+
+            var generator = methodBuilder.GetILGenerator();
+            generator.Emit(OpCodes.Ldarg_0);
+            generator.Emit(OpCodes.Ldarg_1);
+            generator.Emit(OpCodes.Call, closedGenericGetValueMethod);
+            generator.Emit(OpCodes.Ret);
+
+        }
     }
 
 
     public interface IDynamicType
     {
+        T Get<T>(string memberName);
     }
 
 
@@ -161,17 +186,6 @@ namespace DynamicType
                 }
             }
             return result;
-        }
-    }
-
-
-    public static class DynamicTypeExtensions
-    {
-        public static T Get<T>(this IDynamicType dynamicType,  string memberName)
-        {
-            // TODO Move this into the generated type.
-            // return ValueAccessor.GetValue
-            return (T)dynamicType.GetType().GetProperty(memberName).GetValue(dynamicType);
         }
     }
 
